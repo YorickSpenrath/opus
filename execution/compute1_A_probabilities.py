@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 
 from ._decorators import verify_all, run_all
@@ -8,10 +9,12 @@ from ..objects.multi_opus import AbstractMultiOpus
 
 def get_positive_probabilities(probabilities, model):
     if hasattr(model, 'classes_'):
-        if model.classes_[0]:
-            probabilities = probabilities[:, 0]
-        else:
-            probabilities = 1 - probabilities[:, 0]
+        assert len(model.classes_) == 2
+        assert all(map(lambda x: isinstance(x, (bool, np.bool_)), model.classes_))
+        true_idx = np.where(model.classes_)[0]
+        assert len(true_idx) == 1
+        true_idx = true_idx[0]
+        probabilities = probabilities[:, true_idx]
     else:
         probabilities = probabilities[:, 1]
 
