@@ -436,8 +436,8 @@ class AbstractOpus:
         return {
             'previous': '$oth^t_{i,i}$',
             ps.OPTIMAL: '$oth^t_{i,j}$',
-            **{f'a{n}cpx': rf'$\varnothing a{n}cp$' for n in ['', 'n']},
-            **{f'a{n}cp+': rf'$\Delta a{n}cp$' for n in ['', 'n']},
+            **{f'a{n}cpx': rf'$\varnothing a{lu}p$' for n, lu in zip(['', 'n'], 'lu')},
+            **{f'a{n}cp+': rf'$\Delta a{lu}p$' for n, lu in zip(['', 'n'], 'lu')},
             '0': '$True$',
             '1': '$False$',
             '.5': 'Regular',
