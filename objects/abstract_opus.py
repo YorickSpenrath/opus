@@ -295,7 +295,9 @@ class AbstractOpus:
         self.store_series(pr, self._single_probabilities_name(e, phase))
 
     def load_probabilities(self, e: SingleOpus, phase: int) -> pd.Series:
-        return self.load_series(self._single_probabilities_name(e, phase))
+        sr = self.load_series(self._single_probabilities_name(e, phase))
+        sr.index = sr.index.astype(str)
+        return sr
 
     def remove_probabilities(self, e: SingleOpus, phase: int):
         self.remove_series(self._single_probabilities_name(e, phase))
@@ -457,10 +459,10 @@ class AbstractOpus:
         return self.has_dataframe(name=self._thresholds_name(metric))
 
     def store_thresholds(self, thresholds: pd.DataFrame, metric: str):
-        self.store_thresholds(thresholds, self._thresholds_name(metric))
+        self.store_dataframe(thresholds, self._thresholds_name(metric))
 
     def load_thresholds(self, metric: str) -> pd.DataFrame:
-        return self.load_thresholds(self._thresholds_name(metric)).set_index(ps.idx)
+        return self.load_dataframe(self._thresholds_name(metric)).set_index(ps.idx)
 
     def remove_thresholds(self, metric: str):
         self.remove_dataframe(self._thresholds_name(metric))
