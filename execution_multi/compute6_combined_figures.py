@@ -6,6 +6,7 @@ from .. import strings as ps
 from ..execution.compute5_figures import make, limits_dict, threshold_sorter, predicted
 from ..objects import AbstractOpus
 from ..objects.multi_opus import AbstractMultiOpus
+from ..ops import fail_to
 
 
 def compute_df(t: [int, None], m: str, opus_experiment: AbstractMultiOpus, threshold=False):
@@ -36,7 +37,7 @@ def compute_df(t: [int, None], m: str, opus_experiment: AbstractMultiOpus, thres
         def load(ao: AbstractOpus):
             return ao.load_all_scores(m)
 
-    ls = [load(ao).reset_index().assign(data=ao.short_name) for ao in opus_experiment]
+    ls = [load(ao).reset_index().assign(data=ao.short_name).fillna(ps.FAIL) for ao in opus_experiment]
     combined_df = pd.concat(ls, axis=0)
 
     def get_ts(ts):
@@ -51,7 +52,7 @@ def compute_df(t: [int, None], m: str, opus_experiment: AbstractMultiOpus, thres
         res_ci = pd.DataFrame()
 
         for tx in last.all_timesteps:
-            dft = get_ts(tx)
+            dft = get_ts(tx).applymap(fail_to(pd.NA))
 
             def is_learned(x):
                 z = threshold_sorter(x)
@@ -62,13 +63,13 @@ def compute_df(t: [int, None], m: str, opus_experiment: AbstractMultiOpus, thres
 
             learned_mask = dft.columns.map(lambda x: is_learned(x))
 
-            mean_ci = dft.loc[:, learned_mask == ''].apply(opus.functions.mean_ci_gb(na_handling='ignore'))
-            mean = mean_ci.iloc[0]
-            ci = mean_ci.iloc[1]
+            df_mean_ci = dft.loc[:, learned_mask == ''].apply(opus.functions.mean_ci_gb(na_handling='ignore'))
+            mean = df_mean_ci.iloc[0]
+            ci = df_mean_ci.iloc[1]
 
             for learner in last.tpm_model_dict:
-                m_, c_ = opus.functions.mean_ci(dft.loc[:, learned_mask == learner].to_numpy().reshape(-1, 1),
-                                                na_handling='ignore')
+                dft_learner = dft.loc[:, learned_mask == learner].to_numpy().reshape(-1, 1)
+                m_, c_ = opus.functions.mean_ci(dft_learner, na_handling='ignore')
                 mean.loc[f'{ps.OPUS}:{last.tpm_shorthand_dict[learner]}'] = m_
                 ci.loc[f'{ps.OPUS}:{last.tpm_shorthand_dict[learner]}'] = c_
 

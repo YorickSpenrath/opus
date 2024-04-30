@@ -1,4 +1,5 @@
 import pandas as pd
+from .strings import FAIL
 
 
 def optimize_threshold(probabilities: pd.Series, labels: pd.Series, method: callable):
@@ -19,3 +20,11 @@ def nape_from_labels(y_true, y_pred):
     return nape_from_numbers(n_true, n_pred)
 
 
+def fail_to(value):
+    def fun(x):
+        if x == FAIL:
+            return value
+        else:
+            return x
+
+    return fun

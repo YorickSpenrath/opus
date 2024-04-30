@@ -38,3 +38,5 @@ RETRAIN = 'retrain'
 SEQUENTIAL = 'sequential'
 OTHERS = 'others'
 COMPLETE = 'complete'
+
+FAIL = 'fail'

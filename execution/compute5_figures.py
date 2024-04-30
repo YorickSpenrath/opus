@@ -1,8 +1,10 @@
+import numpy as np
 import warnings
 
 import matplotlib.pyplot as plt
 import pandas as pd
 
+from functions.heatmap import add_single_colour_mask
 from ..functions import make_heatmap
 from ._decorators import run_all
 from .. import strings as ps
@@ -10,6 +12,8 @@ from ..constants import heuristic_methods, baseline_methods
 from ..objects.abstract_opus import AbstractOpus
 
 # Limits for the heatmaps
+from ..ops import fail_to
+
 limits_dict = {ps.ACCURACY: (0, 1), ps.F1: (0, 1), ps.NAPE_CONVERTED_OBJECT_COUNT: (-2, 0)}
 
 # Sorting
@@ -151,10 +155,14 @@ def make(df: pd.DataFrame,
         ci = prepare_df(ci)
 
     # Highlights for higher/better than previous =======================================================================
-    kwargs['data'] = df.rename(columns=translate_methods)
+    kwargs['data'] = df.rename(columns=translate_methods).applymap(fail_to(pd.NA))
     if threshold:
         def fix(th):
-            if th < 0:
+            if pd.isna(th):
+                return th
+            elif th == ps.FAIL:
+                return 'F'
+            elif th < 0:
                 return '<0'
             elif th > 1:
                 return '>1'
@@ -164,20 +172,25 @@ def make(df: pd.DataFrame,
         kwargs['text_values'] = kwargs['data'].applymap(fix)
     else:
         if add_highlights:
-            kwargs['boldface_mask'] = df.gt(df[translate_methods('previous')], axis=0)
-            kwargs['italic_mask'] = df.lt(df[translate_methods('previous')], axis=0)
+            kwargs['boldface_mask'] = df.applymap(fail_to(-np.inf)).gt(df[translate_methods('previous')], axis=0)
+            kwargs['italic_mask'] = df.applymap(fail_to(np.inf)).lt(df[translate_methods('previous')], axis=0)
 
     # Plot figure ======================================================================================================
+    aspect = 'auto' if ci is None else .35
     f, ax = make_heatmap(
         x_rotation=90,
         na_color='w',
         df_ci=ci,
         num_dec=2,
         value_font_size=6,
-        aspect='auto' if ci is None else .35,
+        aspect=aspect,
         ci_on_new_line=False,
         # TODO: add metric variable and set limit here
         **kwargs)
+
+    df_fail = df == ps.FAIL
+    if (df == ps.FAIL).any().any():
+        add_single_colour_mask(df_fail, na_color=(.25,) * 4, ax=ax, aspect=aspect)
 
     # Remove horizontal labels
     if keep_tem_labels:
