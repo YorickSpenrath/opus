@@ -4,10 +4,11 @@ import opus.functions
 from ..functions import mean_ci, mean_ci_gb
 from .. import strings as ps
 from ..execution.compute5_figures import make, limits_dict, threshold_sorter, predicted
+from ..objects import AbstractOpus
 from ..objects.multi_opus import AbstractMultiOpus
 
 
-def compute_df(t: [int, None], m: str, opus_experiment: AbstractMultiOpus):
+def compute_df(t: [int, None], m: str, opus_experiment: AbstractMultiOpus, threshold=False):
     """
 
     Parameters
@@ -18,6 +19,8 @@ def compute_df(t: [int, None], m: str, opus_experiment: AbstractMultiOpus):
         Metric to get
     opus_experiment: AbstractMultiOpus
         OpusExperiment that hosts the data
+    threshold: bool
+        Whether to use the scores (F) or the thresholds (T)
 
     Returns
     -------
@@ -26,7 +29,14 @@ def compute_df(t: [int, None], m: str, opus_experiment: AbstractMultiOpus):
     ci: pd.DataFrame or None
         Confidence interval of results if t is None, otherwise None.
     """
-    ls = [ao.load_all_scores(m).reset_index().assign(data=ao.short_name) for ao in opus_experiment]
+    if threshold:
+        def load(ao: AbstractOpus):
+            return ao.load_all_thresholds(m)
+    else:
+        def load(ao: AbstractOpus):
+            return ao.load_all_scores(m)
+
+    ls = [load(ao).reset_index().assign(data=ao.short_name) for ao in opus_experiment]
     combined_df = pd.concat(ls, axis=0)
 
     def get_ts(ts):
@@ -72,8 +82,9 @@ def compute_specific_figure(opus_experiment: AbstractMultiOpus,
                             t: [int, None],
                             metric: str,
                             div4: bool = False,
+                            threshold=False,
                             **kwargs):
-    df, ci = compute_df(t, metric, opus_experiment)
+    df, ci = compute_df(t, metric, opus_experiment, threshold)
 
     if div4 and (t is None):
         df = df[df.index % 4 == 0]
@@ -90,6 +101,8 @@ def compute_specific_figure(opus_experiment: AbstractMultiOpus,
             name += '_labels'
         if kwargs.get('add_arrows', False):
             name += '_arrows'
+        if threshold:
+            name += '_thresholds'
     else:
         name = kwargs.pop('name')
 
@@ -99,7 +112,8 @@ def compute_specific_figure(opus_experiment: AbstractMultiOpus,
              title=kwargs.pop('title', f'{metric} @ {t}'),
              ci=ci,
              add_highlights=True,
-             limits=limits_dict[metric],
+             limits=(0, 1) if threshold else limits_dict[metric],
+             threshold=threshold,
              **kwargs)[0],
         name=name)
 

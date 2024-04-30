@@ -1,3 +1,4 @@
+import warnings
 from typing import Tuple, Set, List
 
 import numpy as np
@@ -112,6 +113,9 @@ def make_heatmap(data: pd.DataFrame,
     assert_df(boldface_mask)
     assert_df(text_values)
 
+    if df_ci is not None and text_values is not None:
+        warnings.warn('Warning: df_ci and text_values are both given, df_ci is ignored')
+
     # Fill value =======================================================================================================
     data = data.fillna(data.mean().mean())
 
@@ -176,11 +180,23 @@ def make_heatmap(data: pd.DataFrame,
     ax.imshow(data_for_colours, cmap=cmap, vmin=0, vmax=1)
 
     if text_values is None:
-        text_values = data
-    else:
-        assert text_values.shape == data.shape
-        assert (text_values.index == data.index).all()
-        assert (text_values.columns == data.columns).all()
+        text_values = pd.DataFrame(columns=data.columns, index=data.index)
+        for x in range(len(data.columns)):
+            for y, skip_zero_for_row, num_dec_for_row in zip(range(len(data.index)), skip_zero, num_dec):
+                def fmt(v):
+                    if isinstance(v, str):
+                        return v
+                    s = f'{v:.{num_dec_for_row}f}'
+                    if skip_zero_for_row and abs(v) < 1:
+                        s = s.replace('0.', '.')
+                    return s
+
+                txt = fmt(data.iloc[y, x])
+                if df_ci is not None:
+                    txt += ('\n' if ci_on_new_line else ' ')
+                    txt += rf'$\pm$' + fmt(df_ci.iloc[y, x])
+
+                text_values.iloc[y, x] = txt
 
     # Determine which values to show ===================================================================================
     if isinstance(show_values, bool):
@@ -222,26 +238,13 @@ def make_heatmap(data: pd.DataFrame,
                 if not should_show(x, y) or pd.isna(text_values.iloc[y, x]):
                     continue
 
-                def fmt(v):
-                    if isinstance(v, str):
-                        return v
-                    s = f'{v:.{num_dec_for_row}f}'
-                    if skip_zero_for_row and abs(v) < 1:
-                        s = s.replace('0.', '.')
-                    return s
-
                 # White in the bottom, black in the top
                 col = 'w' if (data_for_colours.iloc[y, x] < 0.5) else 'k'
 
                 # TODO: na text?
                 if not na_mask.iloc[y, x]:
                     # Format number of decimals
-                    t = fmt(text_values.iloc[y, x])
-
-                    # Add confidence interval if necessary
-                    if df_ci is not None:
-                        connector = '\n' if ci_on_new_line else ' '
-                        t = t + connector + rf'$\pm$' + fmt(df_ci.iloc[y, x])
+                    t = text_values.iloc[y, x]
 
                     kw = dict()
                     if italic_mask is not None and italic_mask.iloc[y, x]:

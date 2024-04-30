@@ -555,6 +555,14 @@ class AbstractOpus:
     def remove_score_type(self, metric: str, score_type: str):
         self.remove_dataframe(self._score_name(metric, score_type))
 
+    def load_all_thresholds(self, m: str, return_best_previous_hp_per_timestamp=False):
+        _, best = self.load_all_scores(m, True)
+        thresholds = self.load_thresholds(m).loc[best].reset_index(level=list(range(1, len(ps.idx))), drop=True)
+        if return_best_previous_hp_per_timestamp:
+            return thresholds, best
+        else:
+            return thresholds
+
     def load_all_scores(self, m: str, return_best_previous_hp_per_timestamp=False):
         # Scores
         scores = self.load_score_type(metric=m, score_type=ps.OPUS)

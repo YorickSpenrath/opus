@@ -73,7 +73,9 @@ def make(df: pd.DataFrame,
          add_highlights: bool = False,
          add_arrows: bool = False,
          tem_filter: [None, str, callable] = 'default',
-         keep_tem_labels: bool = True, **kwargs):
+         keep_tem_labels: bool = True,
+         threshold: bool = False,
+         **kwargs):
     """
 
     Parameters
@@ -149,16 +151,24 @@ def make(df: pd.DataFrame,
         ci = prepare_df(ci)
 
     # Highlights for higher/better than previous =======================================================================
-    if add_highlights:
-        df_bold = df.gt(df[translate_methods('previous')], axis=0)
-        df_italic = df.lt(df[translate_methods('previous')], axis=0)
+    kwargs['data'] = df.rename(columns=translate_methods)
+    if threshold:
+        def fix(th):
+            if th < 0:
+                return '<0'
+            elif th > 1:
+                return '>1'
+            else:
+                return f'{th:.2f}'.replace('0.', '.')
+
+        kwargs['text_values'] = kwargs['data'].applymap(fix)
     else:
-        df_bold = None
-        df_italic = None
+        if add_highlights:
+            kwargs['boldface_mask'] = df.gt(df[translate_methods('previous')], axis=0)
+            kwargs['italic_mask'] = df.lt(df[translate_methods('previous')], axis=0)
 
     # Plot figure ======================================================================================================
     f, ax = make_heatmap(
-        data=df.rename(columns=translate_methods),
         x_rotation=90,
         na_color='w',
         df_ci=ci,
@@ -166,8 +176,6 @@ def make(df: pd.DataFrame,
         value_font_size=6,
         aspect='auto' if ci is None else .35,
         ci_on_new_line=False,
-        boldface_mask=df_bold,
-        italic_mask=df_italic,
         # TODO: add metric variable and set limit here
         **kwargs)
 
