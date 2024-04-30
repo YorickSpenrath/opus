@@ -44,8 +44,11 @@ def run(ao: [AbstractOpus, AbstractMultiOpus], redo=False):
         for metric, metric_method in ao.metric_methods_dict.items():
             res = pd.Series(dtype=float, name=experiment.index)
             for th_name, th_value in thresholds[metric].loc[experiment.index].items():
-                y_pred = pr >= th_value
-                res.loc[th_name] = metric_method(y_true=y_true, y_pred=y_pred)
+                if pd.isna(th_value):
+                    res.loc[th_name] = pd.NA
+                else:
+                    y_pred = pr >= th_value
+                    res.loc[th_name] = metric_method(y_true=y_true, y_pred=y_pred)
             scores[metric] = pd.concat([scores[metric], res.to_frame().T], axis=0).sort_index()
 
         save_counter += 1

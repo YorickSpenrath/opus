@@ -6,12 +6,12 @@ from ..objects.multi_opus import AbstractMultiOpus
 # an OpusExperiment (essentially the equivalent of vectorize)
 
 def run_all(func):
-    def wrapper_run(source: [AbstractMultiOpus, AbstractOpus]):
+    def wrapper_run(source: [AbstractMultiOpus, AbstractOpus], **kwargs):
         if isinstance(source, AbstractMultiOpus):
             for opus in source:
-                func(opus)
+                func(opus, **kwargs)
         else:
-            func(source)
+            func(source, **kwargs)
 
     return wrapper_run
 

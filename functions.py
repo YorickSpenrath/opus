@@ -564,3 +564,12 @@ def mean_ci_tex_gb(**kwargs):
         return mean_ci_tex(x, **kwargs)
 
     return fun
+
+
+# This is a WIP separate package used by some other projects
+try:
+    from functions.heatmap import make_heatmap
+    from functions.confidence_interval import *
+    from functions.general_functions import set_compare
+except ModuleNotFoundError:
+    pass
