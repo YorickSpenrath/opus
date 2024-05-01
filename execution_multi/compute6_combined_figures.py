@@ -47,9 +47,9 @@ def compute_df(t: [int, None], m: str, opus_experiment: AbstractMultiOpus, mode=
             if pd.isna(x):
                 return x
             elif x == ps.FAIL:
-                return 1
-            else:
                 return 0
+            else:
+                return 1
 
         # Skip the first column, because that is time
         combined_df.iloc[:, 1:] = combined_df.iloc[:, 1:].applymap(mapper)
