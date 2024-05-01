@@ -1,7 +1,6 @@
 import pandas as pd
 
 import opus.functions
-from ..functions import mean_ci, mean_ci_gb
 from .. import strings as ps
 from ..execution.compute5_figures import make, limits_dict, threshold_sorter, predicted
 from ..objects import AbstractOpus
@@ -9,7 +8,7 @@ from ..objects.multi_opus import AbstractMultiOpus
 from ..ops import fail_to
 
 
-def compute_df(t: [int, None], m: str, opus_experiment: AbstractMultiOpus, threshold=False):
+def compute_df(t: [int, None], m: str, opus_experiment: AbstractMultiOpus, mode='metric'):
     """
 
     Parameters
@@ -20,8 +19,8 @@ def compute_df(t: [int, None], m: str, opus_experiment: AbstractMultiOpus, thres
         Metric to get
     opus_experiment: AbstractMultiOpus
         OpusExperiment that hosts the data
-    threshold: bool
-        Whether to use the scores (F) or the thresholds (T)
+    mode: str
+        Whether to show the metric values ('metric'), the thresholds ('threshold') or the fails (ps.FAIL)
 
     Returns
     -------
@@ -30,23 +29,41 @@ def compute_df(t: [int, None], m: str, opus_experiment: AbstractMultiOpus, thres
     ci: pd.DataFrame or None
         Confidence interval of results if t is None, otherwise None.
     """
-    if threshold:
+    if mode == 'threshold':
         def load(ao: AbstractOpus):
             return ao.load_all_thresholds(m)
-    else:
+    elif mode in ['metric', ps.FAIL]:
         def load(ao: AbstractOpus):
             return ao.load_all_scores(m)
+    else:
+        raise NotImplementedError(mode)
 
     ls = [load(ao).reset_index().assign(data=ao.short_name).fillna(ps.FAIL) for ao in opus_experiment]
     combined_df = pd.concat(ls, axis=0)
 
+    # Apply FAIL flag --------------------------------------------------------------------------------------------------
+    if mode == ps.FAIL:
+        def mapper(x):
+            if pd.isna(x):
+                return x
+            elif x == ps.FAIL:
+                return 1
+            else:
+                return 0
+
+        # Skip the first column, because that is time
+        combined_df.iloc[:, 1:] = combined_df.iloc[:, 1:].applymap(mapper)
+
+    # Get specific timestep --------------------------------------------------------------------------------------------
     def get_ts(ts):
         return combined_df[combined_df[ps.TIMESTEP] == ts].set_index('data').drop(columns=ps.TIMESTEP)
 
+    # Single TS or All TS averaged?
     if t is not None:
         # Single Timestep
         return get_ts(t), None
     else:
+        # All Timesteps, so create row per timestep and compute mean + ci
         last = opus_experiment.list_of_opus[-1]
         res_mean = pd.DataFrame()
         res_ci = pd.DataFrame()
@@ -76,6 +93,9 @@ def compute_df(t: [int, None], m: str, opus_experiment: AbstractMultiOpus, thres
             res_mean = pd.concat([res_mean, mean.rename(tx).to_frame().T], axis=0)
             res_ci = pd.concat([res_ci, ci.rename(tx).to_frame().T], axis=0)
 
+        if mode == ps.FAIL:
+            res_ci = None
+
         return res_mean, res_ci
 
 
@@ -83,9 +103,37 @@ def compute_specific_figure(opus_experiment: AbstractMultiOpus,
                             t: [int, None],
                             metric: str,
                             div4: bool = False,
-                            threshold=False,
+                            mode='metric',
                             **kwargs):
-    df, ci = compute_df(t, metric, opus_experiment, threshold)
+    """
+    Compute a specific figure
+
+    Parameters
+    ----------
+    opus_experiment: AbstractMultiOpus
+        Where the data is stored
+    t: int or None
+        What timestep to show. If None, all timesteps are shown as average over SingleOpus. If int, all SingleOpus
+        are shown for that timestep.
+    metric: str
+        Metric to show
+    div4: bool
+        Whether only to include timesteps divisible by 4
+    mode: str
+        What to plot. 'default' plots the metric values, 'threshold' plots the thresholds, 'fail' plots fails
+
+    Other Parameters
+    ----------------
+    kwargs: passed directly to make_heatmap
+
+    Returns
+    -------
+
+    """
+
+    assert mode in ['metric', 'threshold', ps.FAIL]
+
+    df, ci = compute_df(t, metric, opus_experiment, mode)
 
     if div4 and (t is None):
         df = df[df.index % 4 == 0]
@@ -102,8 +150,8 @@ def compute_specific_figure(opus_experiment: AbstractMultiOpus,
             name += '_labels'
         if kwargs.get('add_arrows', False):
             name += '_arrows'
-        if threshold:
-            name += '_thresholds'
+        if mode != 'metric':
+            name += f'_{mode}'
     else:
         name = kwargs.pop('name')
 
@@ -113,8 +161,8 @@ def compute_specific_figure(opus_experiment: AbstractMultiOpus,
              title=kwargs.pop('title', f'{metric} @ {t}'),
              ci=ci,
              add_highlights=True,
-             limits=(0, 1) if threshold else limits_dict[metric],
-             threshold=threshold,
+             limits=(0, 1) if mode in ['threshold', ps.FAIL] else limits_dict[metric],
+             mode=mode,
              **kwargs)[0],
         name=name)
 

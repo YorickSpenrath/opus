@@ -78,7 +78,7 @@ def make(df: pd.DataFrame,
          add_arrows: bool = False,
          tem_filter: [None, str, callable] = 'default',
          keep_tem_labels: bool = True,
-         threshold: bool = False,
+         mode: str = 'metric',
          **kwargs):
     """
 
@@ -101,6 +101,8 @@ def make(df: pd.DataFrame,
         tem_filter to df and ci.
     keep_tem_labels: bool
         If True, show TEM labels on horizontal. If False, skip.
+    mode: str
+        'metric', 'threshold', ps.FAIL
 
     Other Parameters
     ----------------
@@ -156,7 +158,7 @@ def make(df: pd.DataFrame,
 
     # Highlights for higher/better than previous =======================================================================
     kwargs['data'] = df.rename(columns=translate_methods).applymap(fail_to(pd.NA))
-    if threshold:
+    if mode == 'threshold':
         def fix(th):
             if pd.isna(th):
                 return th
@@ -170,10 +172,25 @@ def make(df: pd.DataFrame,
                 return f'{th:.2f}'.replace('0.', '.')
 
         kwargs['text_values'] = kwargs['data'].applymap(fix)
-    else:
+    elif mode == ps.FAIL:
+        def fix(fail):
+            if pd.isna(fail):
+                return fail
+            elif fail == 1:
+                return '1'
+            elif fail == 0:
+                return '0'
+            else:
+                return f'{fail:.2f}'.replace('0.', '.')
+
+        kwargs['text_values'] = kwargs['data'].applymap(fix)
+
+    elif mode == 'metric':
         if add_highlights:
             kwargs['boldface_mask'] = df.applymap(fail_to(-np.inf)).gt(df[translate_methods('previous')], axis=0)
             kwargs['italic_mask'] = df.applymap(fail_to(np.inf)).lt(df[translate_methods('previous')], axis=0)
+    else:
+        raise NotImplementedError()
 
     # Plot figure ======================================================================================================
     aspect = 'auto' if ci is None else .35
@@ -189,7 +206,7 @@ def make(df: pd.DataFrame,
         **kwargs)
 
     df_fail = df == ps.FAIL
-    if (df == ps.FAIL).any().any():
+    if df_fail.any().any():
         add_single_colour_mask(df_fail, na_color=(.25,) * 4, ax=ax, aspect=aspect)
 
     # Remove horizontal labels
@@ -235,7 +252,6 @@ def make(df: pd.DataFrame,
                 if number_of_each[i] < 4:
                     s = short_names.get(i, '')
                     if i not in short_names:
-                        warnings.warn(f'Cannot find short name for {i}')
                         arrow = False
                         text = False
                 else:
