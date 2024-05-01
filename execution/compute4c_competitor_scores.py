@@ -128,6 +128,10 @@ def run(ao: [AbstractOpus, AbstractMultiOpus], redo=False):
 
         for is_phase1 in [True, False]:
 
+            def log(msg):
+                for m in res.keys():
+                    res[m].loc[f'Note_{ao.tt_string(is_phase1)}'] = msg
+
             # Set up PU learner
             inner_estimator = ao.model_constructor_dict[experiment.model_name]()
             outer_estimator = AdaptedElkanotoPuClassifier(inner_estimator, random_state=0)
@@ -140,6 +144,7 @@ def run(ao: [AbstractOpus, AbstractMultiOpus], redo=False):
             y = data_object.converted
 
             if y.values.sum() <= 1:
+                log(f'{y.values.sum()} positives')
                 continue
             x = data_object.x
             # Train PU learner
@@ -148,13 +153,18 @@ def run(ao: [AbstractOpus, AbstractMultiOpus], redo=False):
             except TypeError as e:
                 # I'm not sure what this is
                 if '_new_learning_node() got an unexpected keyword argument \'is_active_node\'' in str(e):
+                    log('AHOT ERROR')
                     continue
                 else:
                     raise e
 
             # Compute proba
             test_set = data_object.non_converted_only
+            for metric in res.keys():
+                res[metric].loc['c'] = outer_estimator.c
+
             if outer_estimator.c == 0:
+                log('c=0')
                 continue
             probabilities = outer_estimator.predict_proba(test_set.x.values)
             positive_probabilities = get_positive_probabilities(probabilities, inner_estimator)
