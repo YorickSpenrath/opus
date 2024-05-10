@@ -587,7 +587,11 @@ class AbstractOpus:
 
         # Get the competitor scores
         if self.has_score_type(m, ps.COMPETITOR):
+
             comp_full = self.load_score_type(m, ps.COMPETITOR)
+
+            # TODO: handle these additional information columns better
+            comp_full = comp_full.drop(columns=['Note_phase1', 'Note_phase2', 'c'])
 
             def competitor_name(x):
                 a, b = x.rsplit('_', 1)
