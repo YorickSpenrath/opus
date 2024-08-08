@@ -1,13 +1,13 @@
 import numpy as np
 import pandas as pd
 from pulearn import ElkanotoPuClassifier
-
 from ._decorators import run_all
 from ..execution.compute1_A_probabilities import get_positive_probabilities
 from ..objects import AbstractOpus
 from .. import strings as ps
 from ..objects.multi_opus import AbstractMultiOpus
 from ..objects.single_opus import SingleOpus
+from .competitors import xgb_pu
 
 
 class AdaptedElkanotoPuClassifier(ElkanotoPuClassifier):
@@ -84,7 +84,9 @@ def run(ao: [AbstractOpus, AbstractMultiOpus], redo=False):
     #     return
     print(f'Computing competitor scores for {ao}')
 
-    columns = [f'{ps.BASIC_PU}_{ao.tt_string(p)}' for p in [True, False]]
+    columns = [f'{ps.BASIC_PU}_{ao.tt_string(p)}' for p in [True, False]] + \
+              [f'{ps.UPU}_{ao.tt_string(p)}' for p in [True, False]] + \
+              [f'{ps.NNPU}_{ao.tt_string(p)}' for p in [True, False]]
 
     def generate_empty():
         return pd.DataFrame(columns=columns + ps.idx).set_index(ps.idx)
@@ -94,7 +96,7 @@ def run(ao: [AbstractOpus, AbstractMultiOpus], redo=False):
     else:
         def load_or_empty(m):
             if ao.has_score_type(m, ps.COMPETITOR):
-                return ao.load_score_type(m, ps.COMPETITOR).sort_index()
+                return ao.load_score_type(m, ps.COMPETITOR).sort_index().reindex(columns=columns)
             else:
                 return generate_empty()
 
@@ -111,73 +113,197 @@ def run(ao: [AbstractOpus, AbstractMultiOpus], redo=False):
     for experiment in ao.experiment_iterator():
         experiment: SingleOpus
 
-        if experiment.strategy == ps.UPDATE:
-            # PU learning needs the converted, so we only do this for static
+        def verify_metric(df_metric):
+            if experiment.index not in df_metric.index:
+                return False
+            if df_metric.loc[experiment.index].isna().any():
+                return False
+            return True
+
+        if all(verify_metric(df_metric) for df_metric in scores.values()):
             continue
-        elif experiment.strategy == ps.CD:
-            pass
-        elif experiment.strategy == ps.STATIC:
-            pass
-        else:
-            raise ValueError(experiment.strategy)
-
-        if all([experiment.index in df.index for df in scores.values()]):
-            continue
-
-        res = {m: pd.Series(dtype=float, name=experiment.index) for m in ao.metric_methods_dict}
-
         for is_phase1 in [True, False]:
 
             def log(msg):
-                for m in res.keys():
-                    res[m].loc[f'Note_{ao.tt_string(is_phase1)}'] = msg
+                for m in ao.metric_methods_dict.keys():
+                    original_message = scores[m].loc[experiment.index, f'Note_{ao.tt_string(is_phase1)}']
+                    if pd.isna(original_message):
+                        new_message = msg
+                    else:
+                        new_message = original_message + ',' + msg
+                    scores[m].loc[experiment.index, f'Note_{ao.tt_string(is_phase1)}'] = new_message
 
-            # Set up PU learner
-            inner_estimator = ao.model_constructor_dict[experiment.model_name]()
-            outer_estimator = AdaptedElkanotoPuClassifier(inner_estimator, random_state=0)
+            # BASIC PU -------------------------------------------------------------------------------------------------
+            def check_if_pu_is_done(df):
+                if experiment.index not in df.index:
+                    return False
+                return not pd.isna(df.loc[experiment.index, f'{ps.BASIC_PU}_{ao.tt_string(is_phase1)}'])
 
-            # Get data
-            if is_phase1:
-                data_object = experiment.data_reference.phase_1_data
-            else:
-                data_object = experiment.data_reference.phase_2_data
-            y = data_object.converted
+            do_pu = (not all(map(check_if_pu_is_done, scores.values()))) & (experiment.strategy != ps.UPDATE)
 
-            if y.values.sum() <= 1:
-                log(f'{y.values.sum()} positives')
-                continue
-            x = data_object.x
-            # Train PU learner
-            try:
-                outer_estimator.fit(x.values, y.values)
-            except TypeError as e:
-                # I'm not sure what this is
-                if '_new_learning_node() got an unexpected keyword argument \'is_active_node\'' in str(e):
-                    log('AHOT ERROR')
-                    continue
+            if do_pu:
+
+                # Set up PU learner
+                inner_estimator = ao.model_constructor_dict[experiment.model_name]()
+                outer_estimator = AdaptedElkanotoPuClassifier(inner_estimator, random_state=0)
+
+                # Get data
+                if is_phase1:
+                    data_object = experiment.data_reference.phase_1_data
                 else:
-                    raise e
+                    data_object = experiment.data_reference.phase_2_data
+                y = data_object.converted
 
-            # Compute proba
-            test_set = data_object.non_converted_only
-            for metric in res.keys():
-                res[metric].loc['c'] = outer_estimator.c
+                if y.values.sum() <= 1:
+                    log(f'{y.values.sum()} positives')
+                    continue
+                x = data_object.x
+                # Train PU learner
+                try:
+                    outer_estimator.fit(x.values, y.values)
+                except TypeError as e:
+                    # I'm not sure what this is
+                    if '_new_learning_node() got an unexpected keyword argument \'is_active_node\'' in str(e):
+                        log('AHOT ERROR')
+                        continue
+                    else:
+                        raise e
 
-            if outer_estimator.c == 0:
-                log('c=0')
-                continue
-            probabilities = outer_estimator.predict_proba(test_set.x.values)
-            positive_probabilities = get_positive_probabilities(probabilities, inner_estimator)
+                # Compute proba
+                test_set = data_object.non_converted_only
+                for m in ao.metric_methods_dict.keys():
+                    scores[m].loc[experiment.index, 'c'] = outer_estimator.c
 
-            # Compute labels
-            y_pred = positive_probabilities >= 0.5
-            y_true = test_set.labels
+                if outer_estimator.c == 0:
+                    log('c=0')
+                    continue
+                probabilities = outer_estimator.predict_proba(test_set.x.values)
+                positive_probabilities = get_positive_probabilities(probabilities, inner_estimator)
 
-            for metric, metric_method in ao.metric_methods_dict.items():
-                res[metric].loc[f'{ps.BASIC_PU}_{ao.tt_string(is_phase1)}'] = \
-                    metric_method(y_pred=y_pred, y_true=y_true)
-        for metric in scores.keys():
-            scores[metric] = pd.concat([scores[metric], res[metric].to_frame().T], axis=0)
+                # Compute labels
+                y_pred = positive_probabilities >= 0.5
+                y_true = test_set.labels
+
+                for metric, metric_method in ao.metric_methods_dict.items():
+                    scores[metric].loc[experiment.index, f'{ps.BASIC_PU}_{ao.tt_string(is_phase1)}'] = \
+                        metric_method(y_pred=y_pred, y_true=y_true)
+
+            # UPU / NNPU -----------------------------------------------------------------------------------------------
+            for pu in [ps.UPU, ps.NNPU]:
+                def check_if_done(df):
+                    if experiment.index not in df.index:
+                        return False
+                    return not pd.isna(df.loc[experiment.index, f'{pu}_{ao.tt_string(is_phase1)}'])
+
+                do_pu = (not all(map(check_if_done, scores.values()))) & \
+                        (experiment.model_name == ps.DECISION_TREE)
+
+                if do_pu:
+                    if is_phase1:
+                        train_data, test_data = experiment.data_reference.phase_1_data.train_test_split()
+                    else:
+
+                        def check_is_highest(m):
+                            all_scores = scores[m].loc[:, f'{pu}_{ao.tt_string(True)}']
+
+                            # If no (valid) scores yet: there is no point in P2
+                            if pd.isna(all_scores).all():
+                                return False
+
+                            # Find the best score, and check if _this_ experiment has the best score in p1
+                            # If so, we compute the second phase results. Otherwise we won't use it anyway
+                            # TODO: also do this for all other experiments?
+                            best_score = all_scores.max()
+                            score_p1 = scores[m].loc[experiment.index, f'{pu}_{ao.tt_string(True)}']
+                            return score_p1 == best_score
+
+                        if not any(check_is_highest(m) for m in ao.metric_methods_dict.keys()):
+                            continue
+
+                        train_data = experiment.data_reference.phase_1_data
+                        test_data = experiment.data_reference.phase_2_data
+
+                    # Compute label frequency
+                    phase1_data = experiment.data_reference.phase_1_data
+                    label_frequency = (phase1_data.converted.sum()) / (phase1_data.labels.sum())
+
+                    if experiment.strategy == ps.STATIC:
+                        pass
+                    elif experiment.strategy == ps.UPDATE:
+                        # Add new positive points to training data
+                        train_data = train_data + test_data.converted_only
+                    else:
+                        raise NotImplementedError()
+
+                    # Keep only non_converted from test data
+                    test_data = test_data.non_converted_only
+
+                    # Match Features
+                    test_data = test_data.match_features(train_data)
+
+                    # Get predicted labels -----------------------------------------------------------------------------
+                    y_pred = xgb_pu.PUBoost(obj=pu, random_state=0, label_freq=label_frequency) \
+                                 .fit(train_data.x, train_data.labels) \
+                                 .inplace_predict(test_data.x) >= 0.50
+
+                    # Compute and save the metric scores ---------------------------------------------------------------
+                    for metric, metric_method in ao.metric_methods_dict.items():
+                        scores[metric].loc[experiment.index, f'{pu}_{ao.tt_string(is_phase1)}'] = \
+                            metric_method(y_pred=y_pred, y_true=test_data.labels)
+
+            # # PU_HDT ---------------------------------------------------------------------------------------------------
+            # def check_if_pu_hdt_is_done(df):
+            #     return not pd.isna(df.loc[experiment.index, f'{ps.PU_HDT}_{ao.tt_string(is_phase1)}'])
+            #
+            # if not all(map(check_if_pu_hdt_is_done, scores.values())):
+            #
+            #     if is_phase1:
+            #         # Train PH-HDT on the labelled
+            #         xy_train, xy_validation = experiment.data_reference.phase_1_data.train_test_split()
+            #     else:
+            #
+            #         def check_is_highest(m):
+            #             all_scores = scores[m].loc[:, f'{ps.PU_HDT}_{ao.tt_string(True)}']
+            #
+            #             # If no (valid) scores yet: there is no point in P2
+            #             if pd.isna(all_scores).all():
+            #                 return False
+            #
+            #             # Find the best score, and check if _this_ experiment has the best score
+            #             # If so, we compute the second phase results. Otherwise we skip it, as we won't use it anyway
+            #             # TODO: also do this for all other experiments?
+            #             best_score = all_scores.max()
+            #             score_p1 = scores[m].loc[experiment.index, f'{ps.PU_HDT}_{ao.tt_string(True)}']
+            #             return score_p1 == best_score
+            #
+            #         # Pre-emptive check if the P1 is (one of) the highest. If not for any metric
+            #         if not any(check_is_highest(m) for m in ao.metric_methods_dict.keys()):
+            #             continue
+            #
+            #         xy_train = experiment.data_reference.phase_1_data
+            #         xy_validation = experiment.data_reference.phase_2_data
+            #
+            #     x_train = xy_train.x
+            #     y_train = xy_train.converted
+            #
+            #     # train model
+            #     model = pu_tree_simplified.PuHdt(random_state=0, max_depth=5)
+            #     model.fit(x_train, y_train, p_y=np.mean(y_train))
+            #     probabilities = model.predict_proba(xy_validation.x)
+            #     positive_probabilities = get_positive_probabilities(probabilities, model)
+            #
+            #     for metric, metric_method in ao.metric_methods_dict.items():
+            #         # Compute (p1) or get (p2) the OTH
+            #         if is_phase1:
+            #             oth = find_optimal_threshold(y_test=xy_validation.labels, y_prob=positive_probabilities,
+            #                                          metric_method=metric_method)
+            #             scores[metric].loc[experiment.index, f'{ps.PU_HDT}_{ao.tt_string(True)}_oth'] = oth
+            #         else:
+            #             oth = scores[metric].loc[experiment.index, f'{ps.PU_HDT}_{ao.tt_string(True)}_oth']
+            #
+            #         # Assign score based on OTH
+            #         score = metric_method(y_true=xy_validation.labels, y_test=positive_probabilities >= oth)
+            #         scores[metric].loc[experiment.index, f'{ps.PU_HDT}_{ao.tt_string(is_phase1)}'] = score
 
         save_counter += 1
 
@@ -205,6 +331,9 @@ def verify(oe: AbstractMultiOpus):
                 except KeyError:
                     print(f'{metric}: missing experiments')
                     return False
+                if df.isna().any().any():
+                    print(f'{metric}: missing values')
+
         print('All good')
     return True
 

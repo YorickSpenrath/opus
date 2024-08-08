@@ -18,6 +18,8 @@ ALTERNATIVE = 'alternative'
 COMPETITOR = 'competitor'
 
 BASIC_PU = 'basic_PU'
+UPU = 'upu'
+NNPU = 'nnpu'
 
 NAPE_CONVERTED_OBJECT_COUNT = 'nape_converted_object_count'
 
