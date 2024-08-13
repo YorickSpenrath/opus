@@ -132,6 +132,7 @@ def run(ao: [AbstractOpus, AbstractMultiOpus], redo=False):
                     else:
                         new_message = original_message + ',' + msg
                     scores[m].loc[experiment.index, f'Note_{ao.tt_string(is_phase1)}'] = new_message
+                    scores[m].loc[experiment.index, f'{ps.BASIC_PU}_{ao.tt_string(is_phase1)}'] = ps.FAIL
 
             # BASIC PU -------------------------------------------------------------------------------------------------
             def check_if_pu_is_done(df):
@@ -204,7 +205,7 @@ def run(ao: [AbstractOpus, AbstractMultiOpus], redo=False):
                     else:
 
                         def check_is_highest(m):
-                            all_scores = scores[m].loc[:, f'{pu}_{ao.tt_string(True)}']
+                            all_scores = scores[m].loc[experiment.ts].loc[:, f'{pu}_{ao.tt_string(True)}']
 
                             # If no (valid) scores yet: there is no point in P2
                             if pd.isna(all_scores).all():

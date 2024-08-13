@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 
 import opus.functions
@@ -69,7 +70,7 @@ def compute_df(t: [int, None], m: str, opus_experiment: AbstractMultiOpus, mode=
         res_ci = pd.DataFrame()
 
         for tx in last.all_timesteps:
-            dft = get_ts(tx).applymap(fail_to(pd.NA))
+            dft = get_ts(tx).applymap(fail_to(np.nan)).astype(float)
 
             def is_learned(x):
                 z = threshold_sorter(x)
