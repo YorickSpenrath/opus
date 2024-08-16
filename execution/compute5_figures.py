@@ -157,7 +157,7 @@ def make(df: pd.DataFrame,
         ci = prepare_df(ci)
 
     # Highlights for higher/better than previous =======================================================================
-    kwargs['data'] = df.rename(columns=translate_methods).applymap(fail_to(np.nan)).astype(float)
+    kwargs['data'] = df.rename(columns=translate_methods).applymap(fail_to(pd.NA))
     if mode == 'threshold':
         def fix(th):
             if pd.isna(th):
@@ -187,8 +187,8 @@ def make(df: pd.DataFrame,
 
     elif mode == 'metric':
         if add_highlights:
-            kwargs['boldface_mask'] = df.applymap(fail_to(-np.inf)).astype(float).gt(df[translate_methods('previous')], axis=0)
-            kwargs['italic_mask'] = df.applymap(fail_to(np.inf)).astype(float).lt(df[translate_methods('previous')], axis=0)
+            kwargs['boldface_mask'] = df.applymap(fail_to(-np.inf)).gt(df[translate_methods('previous')], axis=0)
+            kwargs['italic_mask'] = df.applymap(fail_to(np.inf)).lt(df[translate_methods('previous')], axis=0)
     else:
         raise NotImplementedError()
 

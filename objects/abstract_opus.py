@@ -16,7 +16,7 @@ import research.patterns.strings as ps
 from .single_opus import SingleOpus
 from .. import strings as ps
 from ..objects.data_reference import DataReference
-from ..ops import nape_from_numbers, nape_from_labels, fail_to
+from ..ops import nape_from_numbers, nape_from_labels
 
 
 class AbstractOpus:
@@ -587,6 +587,7 @@ class AbstractOpus:
 
         # Get the competitor scores
         if self.has_score_type(m, ps.COMPETITOR):
+
             comp_full = self.load_score_type(m, ps.COMPETITOR)
 
             # TODO: handle these additional information columns better
@@ -600,8 +601,7 @@ class AbstractOpus:
             def compute_comp(c):
                 # This gets the best score in episode 2
                 # return comp_full[f'{c}_{self.tt_string(False)}'].groupby(ps.TIMESTEP).max().rename(c)
-                idx = comp_full[f'{c}_{self.tt_string(True)}'].apply(fail_to(np.nan)).astype(float).groupby(
-                    level=0).idxmax().dropna()
+                idx = comp_full.groupby(level=0)[f'{c}_{self.tt_string(True)}'].idxmax().dropna()
                 return comp_full.loc[idx, f'{c}_{self.tt_string(False)}'].reset_index(level=list(range(1, len(ps.idx))),
                                                                                       drop=True).rename(c)
 
@@ -658,8 +658,8 @@ class AbstractOpus:
             return f1_score(y_true=y_true, y_pred=y_pred)
 
         return {ps.ACCURACY: balanced_accuracy_score,
-                ps.F1: f1}
-                # ps.NAPE_CONVERTED_OBJECT_COUNT: nape_from_labels}
+                ps.F1: f1,
+                ps.NAPE_CONVERTED_OBJECT_COUNT: nape_from_labels}
 
     # noinspection PyMethodMayBeStatic,PyUnusedLocal
     def get_alternative_labels(self, ts: int, data_reference: DataReference, model_name: str) \
