@@ -25,7 +25,7 @@ competitor = 4
 alternative = 5
 
 # Names for arrows on top
-names = {baseline: 'Baseline', heuristic: 'Heuristic', predicted: '$TPM$', compare: 'Comparison',
+names = {baseline: 'Baseline', heuristic: 'Heuristic', predicted: 'TPM', compare: 'Comparison',
          competitor: 'Competitor', alternative: 'Alternative'}
 
 
